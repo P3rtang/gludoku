@@ -1,165 +1,216 @@
 import gleam/dict
+import gleam/dynamic/decode
 import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
 import gleam/result
+import gleam/set
+import lustre
 import lustre/attribute
 import lustre/element.{type Element}
 import lustre/element/html
-
-pub type Sudoku =
-  dict.Dict(Int, Cell)
-
-pub fn new() -> Sudoku {
-  dict.from_list([
-    #(0, Empty),
-    #(1, Filled(2)),
-    #(2, Preset(5)),
-    #(3, Empty),
-    #(4, Empty),
-    #(5, Empty),
-    #(6, Empty),
-    #(7, Empty),
-    #(8, Empty),
-    #(9, Empty),
-    #(10, Empty),
-    #(11, Empty),
-    #(12, Empty),
-    #(13, Empty),
-    #(14, Empty),
-    #(15, Empty),
-    #(16, Empty),
-    #(17, Empty),
-    #(18, Empty),
-    #(19, Empty),
-    #(20, Empty),
-    #(21, Empty),
-    #(22, Empty),
-    #(23, Empty),
-    #(24, Empty),
-    #(25, Empty),
-    #(26, Empty),
-    #(27, Empty),
-    #(28, Empty),
-    #(29, Empty),
-    #(30, Empty),
-    #(31, Empty),
-    #(32, Empty),
-    #(33, Empty),
-    #(34, Empty),
-    #(35, Empty),
-    #(36, Empty),
-    #(37, Empty),
-    #(38, Empty),
-    #(39, Empty),
-    #(40, Empty),
-    #(41, Empty),
-    #(42, Empty),
-    #(43, Empty),
-    #(44, Empty),
-    #(45, Empty),
-    #(46, Empty),
-    #(47, Empty),
-    #(48, Empty),
-    #(49, Empty),
-    #(50, Empty),
-    #(51, Empty),
-    #(52, Empty),
-    #(53, Empty),
-    #(54, Empty),
-    #(55, Empty),
-    #(56, Empty),
-    #(57, Empty),
-    #(58, Empty),
-    #(59, Empty),
-    #(60, Empty),
-    #(61, Empty),
-    #(62, Empty),
-    #(63, Empty),
-    #(64, Empty),
-    #(65, Empty),
-    #(66, Empty),
-    #(67, Empty),
-    #(68, Empty),
-    #(69, Empty),
-    #(70, Empty),
-    #(71, Empty),
-    #(72, Empty),
-    #(73, Empty),
-    #(74, Empty),
-    #(75, Empty),
-    #(76, Empty),
-    #(77, Empty),
-    #(78, Empty),
-    #(79, Empty),
-    #(80, Empty),
-  ])
+import lustre/event
+import sudoku/cell/cell
+import sudoku/cell/mark
+import sudoku/cell/state as cs
+import sudoku/cursor/mod as cursor
+import sudoku/generator/mod
+import sudoku/pos as p
+import sudoku/selection
+import sudoku/state.{
+  type KeyEvent, type Model, type Msg, type Sudoku, Model, new,
 }
 
-pub fn get_cell(sudoku: Sudoku, pos: Pos) -> Result(Cell, Nil) {
-  let idx = case pos {
-    Index(idx) -> idx
-    Pos(#(col, row)) -> col + row * 9
+const sudoku_stride = 9
+
+pub fn register() -> Result(Nil, lustre.Error) {
+  let component = lustre.simple(init, update, view)
+  lustre.register(component, "my-sudoku")
+}
+
+fn init(_) -> Model {
+  mod.generate("first")
+  |> result.unwrap(new())
+  |> Model(p.Pos(#(4, 4)) |> cursor.Cursor(#(9, 9)), selection.new())
+}
+
+pub fn element() -> Element(void) {
+  element.element("my-sudoku", [attribute.class("h-screen block")], [])
+}
+
+fn update(model: Model, msg: Msg) -> Model {
+  case msg {
+    state.UserPressedKey(event) -> model |> handle_key_press(event)
+  }
+}
+
+fn handle_key_press(model: Model, event: KeyEvent) -> Model {
+  let Model(sudoku, cursor, sel) = model
+  let cursor.Cursor(c_pos, _) = cursor
+
+  let selected =
+    sel
+    |> set.insert(c_pos |> p.index(sudoku_stride))
+    |> set.to_list
+    |> list.map(p.Index)
+
+  let state.KeyEvent(key, _code, shift, ctrl) = event
+
+  let num = key |> int.parse
+
+  case key, num {
+    "j", _ -> {
+      Model(sudoku, cursor |> cursor.down, sel)
+    }
+    "k", _ -> {
+      Model(sudoku, cursor |> cursor.up, sel)
+    }
+    "h", _ -> {
+      Model(sudoku, cursor |> cursor.left, sel)
+    }
+    "l", _ -> {
+      Model(sudoku, cursor |> cursor.right, sel)
+    }
+    " ", _ -> {
+      Model(sudoku, cursor, sel |> selection.toggle(c_pos))
+    }
+    _, Ok(val) -> {
+      case shift, ctrl {
+        False, False ->
+          Model(sudoku |> set_cells(selected, cs.Filled(val)), cursor, sel)
+        True, _ -> {
+          case sudoku |> get_cell(c_pos) {
+            Ok(cs.Marking(cs.Corner(c))) ->
+              Model(
+                sudoku
+                  |> set_cells(
+                    selected,
+                    cs.Marking(cs.Corner(c) |> mark.toggle_int(val)),
+                  ),
+                cursor,
+                sel,
+              )
+            _ ->
+              Model(
+                sudoku
+                  |> set_cells(
+                    selected,
+                    cs.Marking(cs.Corner(0) |> mark.toggle_int(val)),
+                  ),
+                cursor,
+                sel,
+              )
+          }
+        }
+        False, True -> {
+          case sudoku |> get_cell(c_pos) {
+            Ok(cs.Marking(cs.Center(c))) ->
+              Model(
+                sudoku
+                  |> set_cells(
+                    selected,
+                    cs.Marking(cs.Center(c) |> mark.toggle_int(val)),
+                  ),
+                cursor,
+                sel,
+              )
+            _ ->
+              Model(
+                sudoku
+                  |> set_cells(
+                    selected,
+                    cs.Marking(cs.Center(0) |> mark.toggle_int(val)),
+                  ),
+                cursor,
+                sel,
+              )
+          }
+        }
+      }
+    }
+    "Escape", _ -> Model(sudoku, cursor, selection.new())
+    key, _ -> {
+      echo key
+      model
+    }
+    // _, _ -> model
+  }
+}
+
+fn get_cell(sudoku: Sudoku, pos: p.Pos) -> Result(cs.Cell, Nil) {
+  sudoku |> dict.get(pos |> p.index(sudoku_stride))
+}
+
+fn set_cell(sudoku: Sudoku, pos: p.Pos, value: cs.Cell) -> Sudoku {
+  let idx = pos |> p.index(sudoku_stride)
+
+  {
+    use cell <- result.map(case sudoku |> dict.get(idx) {
+      Ok(cs.Preset(_)) -> Error(Nil)
+      Error(_) -> Error(Nil)
+      Ok(v) -> Ok(v)
+    })
+
+    case cell == value {
+      True -> dict.insert(sudoku, idx, cs.Empty)
+      False -> dict.insert(sudoku, idx, value)
+    }
+  }
+  |> result.unwrap(sudoku)
+}
+
+fn set_cells(sudoku: Sudoku, positions: List(p.Pos), value: cs.Cell) -> Sudoku {
+  case positions {
+    [pos, ..rest] -> sudoku |> set_cell(pos, value) |> set_cells(rest, value)
+    [] -> sudoku
+  }
+}
+
+fn view(model: Model) -> Element(Msg) {
+  let Model(sudoku, cursor, sel) = model
+  let cursor.Cursor(c_pos, _) = cursor
+
+  let on_keypress = {
+    event.on("keydown", {
+      use key <- decode.field("key", decode.string)
+      use code <- decode.field("code", decode.string)
+      use shift <- decode.field("shiftKey", decode.bool)
+      use ctrl <- decode.field("ctrlKey", decode.bool)
+      decode.success(
+        state.UserPressedKey(state.KeyEvent(key, code, shift, ctrl)),
+      )
+    })
   }
 
-  sudoku |> dict.get(idx)
-}
-
-pub fn view(sudoku: Sudoku) -> Element(void) {
   let cell_view =
     {
       use row <- list.try_map(list.range(0, 8))
       use col <- list.try_map(list.range(0, 8))
 
-      use cell <- result.map(sudoku |> get_cell(Pos(#(col, row))))
-      cell |> view_cell
+      use cell <- result.map(sudoku |> get_cell(p.Pos(#(col, row))))
+      cell.element(
+        cs.Model(
+          cell,
+          p.Pos(#(col, row)) == c_pos,
+          sel |> set.contains(p.Pos(#(col, row)) |> p.index(sudoku_stride)),
+        ),
+        [attribute.value("focus")]
+          |> list.append(p.Pos(#(col, row)) |> cell.border),
+      )
     }
     |> result.map(fn(l) {
-      l
-      |> list.map(fn(l) { html.div([attribute.class("flex flex-row h32")], l) })
+      use l <- list.map(l)
+      html.div([attribute.class("flex flex-row h32")], l)
     })
     |> result.unwrap([html.div([], [])])
 
-  html.div([], cell_view)
-}
-
-pub fn view_cell(cell: Cell) -> Element(void) {
-  let #(value, bg) = case cell {
-    Empty -> #(None, None)
-    Preset(val) -> #(
-      Some(val |> int.to_string),
-      Some("oklch(92.3% 0.003 48.717)"),
-    )
-    Filled(val) -> #(Some(val |> int.to_string), None)
-    Mark(_) -> todo
-  }
-
   html.div(
     [
-      attribute.class(
-        "border border-black h-16 w-16 flex items-center justify-center text-4xl",
-      ),
-      attribute.style("background", bg |> option.unwrap("transparent")),
+      on_keypress,
+      attribute.tabindex(1),
+      attribute.autofocus(True),
+      attribute.class("p-16 h-full w-full"),
+      attribute.style("font-family", "monospace"),
     ],
-    [html.text(value |> option.unwrap(""))],
+    cell_view,
   )
-}
-
-pub type Pos {
-  Index(Int)
-  Pos(#(Int, Int))
-}
-
-pub type Cell {
-  Empty
-  Preset(Int)
-  Filled(Int)
-  Mark(Mark)
-}
-
-pub type Mark =
-  Int
-
-pub fn mark_value(_mark: Mark) -> List(Int) {
-  todo
 }

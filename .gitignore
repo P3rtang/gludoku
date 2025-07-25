@@ -1,4 +1,6 @@
 *.beam
 *.ez
-/build
+build
+priv
 erl_crash.dump
+tags
