@@ -12,5 +12,5 @@ pub fn index(pos: Pos, stride: Int) -> Int {
 
 pub fn coords(pos: Pos, stride: Int) -> #(Int, Int) {
   let idx = pos |> index(stride)
-  #(idx % 9, idx / 9)
+  #(idx % stride, idx / stride)
 }

@@ -3,11 +3,11 @@ import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/result
-import gleam/set
 import sudoku/cell/cell
 import sudoku/cell/state as cs
 import sudoku/pos as p
 import sudoku/state.{type Sudoku, new}
+import sudoku/utils/utils
 
 const default_mod = 0x80000000
 
@@ -37,19 +37,18 @@ pub fn solve(sudoku: Sudoku) -> Sudoku {
   solve_with_seed(sudoku, 42)
 }
 
-pub fn solve_with_seed(sudoku: Sudoku, seed: Int) -> Sudoku {
-  let rand = lcg(seed)
+pub fn solve_with_seed(_sudoku: Sudoku, seed: Int) -> Sudoku {
+  let _rand = lcg(seed)
 
   todo
 }
 
 pub fn is_valid(sudoku: Sudoku) -> Bool {
   {
-    use #(idx, val) <- list.map(sudoku |> dict.to_list)
-    let box =
-      verify_idx_list(sudoku, box_positions(p.Index(idx), #(3, 3), 9), val)
-    let row = verify_idx_list(sudoku, row_positions(p.Index(idx), 9, 9), val)
-    let col = verify_idx_list(sudoku, col_positions(p.Index(idx), 9, 9), val)
+    use #(idx, val) <- list.map(sudoku |> utils.to_dict |> dict.to_list)
+    let box = verify_idx_list(sudoku, box_positions(p.Index(idx), #(3, 3)), val)
+    let row = verify_idx_list(sudoku, row_positions(p.Index(idx), 9), val)
+    let col = verify_idx_list(sudoku, col_positions(p.Index(idx), 9), val)
     box && row && col
   }
   |> list.fold(True, fn(acc, b) { acc && b })
@@ -57,25 +56,18 @@ pub fn is_valid(sudoku: Sudoku) -> Bool {
 
 fn verify_idx_list(sudoku: Sudoku, list: List(p.Pos), val: cs.Cell) -> Bool {
   list
-  |> list.map(fn(pos) { sudoku |> dict.get(pos |> p.index(9)) })
+  |> list.map(fn(pos) { sudoku |> utils.get_index(pos |> p.index(9)) })
   |> list.filter_map(fn(cell) { cell })
   |> list.fold(True, fn(b, cell) {
     b && { cell |> cell.value != val |> cell.value }
   })
 }
 
-type Value {
-  Value(pos: p.Pos, value: Int)
-}
-
 ///
 /// Returns all positions in the same sudoku box as the given pos
 ///
-pub fn box_positions(
-  pos: p.Pos,
-  box_size: #(Int, Int),
-  stride: Int,
-) -> List(p.Pos) {
+pub fn box_positions(pos: p.Pos, box_size: #(Int, Int)) -> List(p.Pos) {
+  let stride = box_size.0 * box_size.1
   let #(bc_size, br_size) = box_size
   let #(col, row) = pos |> p.coords(stride)
 
@@ -93,18 +85,18 @@ pub fn box_positions(
 
 /// Returns all positions in the same row as the given pos
 /// The second argument is used to set the row size
-pub fn row_positions(pos: p.Pos, row_size: Int, stride: Int) -> List(p.Pos) {
+pub fn row_positions(pos: p.Pos, stride: Int) -> List(p.Pos) {
   let #(_, row) = pos |> p.coords(stride)
 
-  use col <- list.map(list.range(0, row_size - 1))
+  use col <- list.map(list.range(0, stride - 1))
   p.Pos(#(col, row))
 }
 
 /// Returns all positions in the same row as the given pos
 /// The second argument is used to set the row size
-pub fn col_positions(pos: p.Pos, col_size: Int, stride: Int) -> List(p.Pos) {
+pub fn col_positions(pos: p.Pos, stride: Int) -> List(p.Pos) {
   let #(col, _) = pos |> p.coords(stride)
 
-  use row <- list.map(list.range(0, col_size - 1))
+  use row <- list.map(list.range(0, stride - 1))
   p.Pos(#(col, row))
 }

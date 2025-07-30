@@ -1,4 +1,3 @@
-import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
 import gleam/list
@@ -16,11 +15,23 @@ import sudoku/cursor/mod as cursor
 import sudoku/generator/mod
 import sudoku/pos as p
 import sudoku/selection
-import sudoku/state.{
-  type KeyEvent, type Model, type Msg, type Sudoku, Model, new,
-}
+import sudoku/state.{type KeyEvent, type Model, type Msg, Model, new}
+import sudoku/state as s
+import sudoku/utils/from_list
+import sudoku/utils/utils
+import sudoku/validator/validator
+
+pub type Sudoku =
+  s.Sudoku
 
 const sudoku_stride = 9
+
+const sudoku_list = [
+  0, 0, 0, 0, 0, 5, 0, 2, 0, 0, 0, 0, 0, 0, 4, 0, 0, 1, 6, 0, 1, 0, 0, 0, 7, 0,
+  9, 5, 0, 6, 0, 1, 0, 0, 0, 4, 0, 2, 0, 0, 0, 8, 6, 0, 0, 0, 0, 9, 0, 0, 0, 0,
+  7, 0, 8, 0, 7, 0, 4, 9, 5, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 4, 0, 0, 5, 0,
+  0, 0, 0,
+]
 
 pub fn register() -> Result(Nil, lustre.Error) {
   let component = lustre.simple(init, update, view)
@@ -28,7 +39,9 @@ pub fn register() -> Result(Nil, lustre.Error) {
 }
 
 fn init(_) -> Model {
-  mod.generate("first")
+  // mod.generate("first")
+  sudoku_list
+  |> from_list.from_list(#(3, 3))
   |> result.unwrap(new())
   |> Model(p.Pos(#(4, 4)) |> cursor.Cursor(#(9, 9)), selection.new())
 }
@@ -78,7 +91,7 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
         False, False ->
           Model(sudoku |> set_cells(selected, cs.Filled(val)), cursor, sel)
         True, _ -> {
-          case sudoku |> get_cell(c_pos) {
+          case sudoku |> utils.get_index(c_pos |> p.index(9)) {
             Ok(cs.Marking(cs.Corner(c))) ->
               Model(
                 sudoku
@@ -102,7 +115,7 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
           }
         }
         False, True -> {
-          case sudoku |> get_cell(c_pos) {
+          case sudoku |> utils.get_index(c_pos |> p.index(9)) {
             Ok(cs.Marking(cs.Center(c))) ->
               Model(
                 sudoku
@@ -136,23 +149,19 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
   }
 }
 
-fn get_cell(sudoku: Sudoku, pos: p.Pos) -> Result(cs.Cell, Nil) {
-  sudoku |> dict.get(pos |> p.index(sudoku_stride))
-}
-
 fn set_cell(sudoku: Sudoku, pos: p.Pos, value: cs.Cell) -> Sudoku {
   let idx = pos |> p.index(sudoku_stride)
 
   {
-    use cell <- result.map(case sudoku |> dict.get(idx) {
+    use cell <- result.try(case sudoku |> utils.get_index(idx) {
       Ok(cs.Preset(_)) -> Error(Nil)
       Error(_) -> Error(Nil)
       Ok(v) -> Ok(v)
     })
 
     case cell == value {
-      True -> dict.insert(sudoku, idx, cs.Empty)
-      False -> dict.insert(sudoku, idx, value)
+      True -> sudoku |> utils.set_index(idx, cs.Empty)
+      False -> sudoku |> utils.set_index(idx, value)
     }
   }
   |> result.unwrap(sudoku)
@@ -186,7 +195,9 @@ fn view(model: Model) -> Element(Msg) {
       use row <- list.try_map(list.range(0, 8))
       use col <- list.try_map(list.range(0, 8))
 
-      use cell <- result.map(sudoku |> get_cell(p.Pos(#(col, row))))
+      use cell <- result.map(
+        sudoku |> utils.get_index(p.Pos(#(col, row)) |> p.index(9)),
+      )
       cell.element(
         cs.Model(
           cell,
@@ -203,14 +214,31 @@ fn view(model: Model) -> Element(Msg) {
     })
     |> result.unwrap([html.div([], [])])
 
-  html.div(
-    [
-      on_keypress,
-      attribute.tabindex(1),
-      attribute.autofocus(True),
-      attribute.class("p-16 h-full w-full"),
-      attribute.style("font-family", "monospace"),
-    ],
-    cell_view,
-  )
+  html.div([], [
+    html.div(
+      [
+        on_keypress,
+        attribute.tabindex(1),
+        attribute.autofocus(True),
+        attribute.class("p-16 h-full w-full"),
+        attribute.style("font-family", "monospace"),
+      ],
+      cell_view,
+    ),
+    html.text(
+      case
+        list.all(
+          [
+            sudoku |> validator.validate_boxes,
+            sudoku |> validator.validate_cols,
+            sudoku |> validator.validate_rows,
+          ],
+          result.is_ok,
+        )
+      {
+        True -> "valid"
+        False -> "invalid"
+      },
+    ),
+  ])
 }
