@@ -13,24 +13,24 @@ import sudoku/cell/mark
 import sudoku/cell/state as cs
 import sudoku/cursor/mod as cursor
 import sudoku/generator/mod
+import sudoku/history/history
 import sudoku/pos as p
 import sudoku/selection
-import sudoku/state.{type KeyEvent, type Model, type Msg, Model, new}
-import sudoku/state as s
-import sudoku/utils/from_list
+import sudoku/state.{type KeyEvent, type Model, type Msg, Model}
+import sudoku/sudoku.{new}
 import sudoku/utils/utils
 import sudoku/validator/validator
 
 pub type Sudoku =
-  s.Sudoku
+  sudoku.Sudoku
 
 const sudoku_stride = 9
 
 const sudoku_list = [
-  0, 0, 0, 0, 0, 5, 0, 2, 0, 0, 0, 0, 0, 0, 4, 0, 0, 1, 6, 0, 1, 0, 0, 0, 7, 0,
-  9, 5, 0, 6, 0, 1, 0, 0, 0, 4, 0, 2, 0, 0, 0, 8, 6, 0, 0, 0, 0, 9, 0, 0, 0, 0,
-  7, 0, 8, 0, 7, 0, 4, 9, 5, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 4, 0, 0, 5, 0,
-  0, 0, 0,
+  0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 4, 7, 0, 0, 9, 4, 0, 0, 0, 7, 0, 0,
+  6, 0, 0, 0, 0, 0, 0, 0, 7, 0, 8, 0, 0, 0, 0, 0, 0, 0, 5, 0, 6, 0, 1, 0, 3, 4,
+  0, 0, 0, 0, 3, 0, 6, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 7, 0, 0,
+  5, 8, 2,
 ]
 
 pub fn register() -> Result(Nil, lustre.Error) {
@@ -41,9 +41,9 @@ pub fn register() -> Result(Nil, lustre.Error) {
 fn init(_) -> Model {
   // mod.generate("first")
   sudoku_list
-  |> from_list.from_list(#(3, 3))
+  |> utils.from_list(#(3, 3))
   |> result.unwrap(new())
-  |> Model(p.Pos(#(4, 4)) |> cursor.Cursor(#(9, 9)), selection.new())
+  |> Model(p.Pos(#(4, 4)) |> cursor.Cursor(#(9, 9)), selection.new(), [])
 }
 
 pub fn element() -> Element(void) {
@@ -57,7 +57,7 @@ fn update(model: Model, msg: Msg) -> Model {
 }
 
 fn handle_key_press(model: Model, event: KeyEvent) -> Model {
-  let Model(sudoku, cursor, sel) = model
+  let Model(sudoku, cursor, sel, hist) = model
   let cursor.Cursor(c_pos, _) = cursor
 
   let selected =
@@ -72,24 +72,32 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
 
   case key, num {
     "j", _ -> {
-      Model(sudoku, cursor |> cursor.down, sel)
+      Model(sudoku, cursor |> cursor.down, sel, hist)
     }
     "k", _ -> {
-      Model(sudoku, cursor |> cursor.up, sel)
+      Model(sudoku, cursor |> cursor.up, sel, hist)
     }
     "h", _ -> {
-      Model(sudoku, cursor |> cursor.left, sel)
+      Model(sudoku, cursor |> cursor.left, sel, hist)
     }
     "l", _ -> {
-      Model(sudoku, cursor |> cursor.right, sel)
+      Model(sudoku, cursor |> cursor.right, sel, hist)
     }
     " ", _ -> {
-      Model(sudoku, cursor, sel |> selection.toggle(c_pos))
+      Model(sudoku, cursor, sel |> selection.toggle(c_pos), hist)
     }
     _, Ok(val) -> {
       case shift, ctrl {
-        False, False ->
-          Model(sudoku |> set_cells(selected, cs.Filled(val)), cursor, sel)
+        False, False -> {
+          let hist = hist |> history.replace(sudoku, c_pos, cs.Filled(val))
+
+          Model(
+            sudoku |> set_cells(selected, cs.Filled(val)),
+            cursor,
+            sel,
+            hist,
+          )
+        }
         True, _ -> {
           case sudoku |> utils.get_index(c_pos |> p.index(9)) {
             Ok(cs.Marking(cs.Corner(c))) ->
@@ -101,6 +109,7 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
                   ),
                 cursor,
                 sel,
+                hist,
               )
             _ ->
               Model(
@@ -111,12 +120,16 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
                   ),
                 cursor,
                 sel,
+                hist,
               )
           }
         }
         False, True -> {
           case sudoku |> utils.get_index(c_pos |> p.index(9)) {
-            Ok(cs.Marking(cs.Center(c))) ->
+            Ok(cs.Marking(cs.Center(c))) -> {
+              let hist =
+                hist |> history.replace(sudoku, c_pos, cs.Marking(cs.Center(c)))
+
               Model(
                 sudoku
                   |> set_cells(
@@ -125,8 +138,13 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
                   ),
                 cursor,
                 sel,
+                hist,
               )
-            _ ->
+            }
+            _ -> {
+              let hist =
+                hist |> history.replace(sudoku, c_pos, cs.Marking(cs.Center(0)))
+
               Model(
                 sudoku
                   |> set_cells(
@@ -135,12 +153,27 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
                   ),
                 cursor,
                 sel,
+                hist,
               )
+            }
           }
         }
       }
     }
-    "Escape", _ -> Model(sudoku, cursor, selection.new())
+    "z", _ -> {
+      case ctrl {
+        True -> {
+          let #(sudoku, hist) =
+            hist
+            |> history.undo(sudoku)
+            |> result.unwrap(#(sudoku, hist))
+
+          Model(sudoku, cursor, sel, hist)
+        }
+        False -> model
+      }
+    }
+    "Escape", _ -> Model(sudoku, cursor, selection.new(), hist)
     key, _ -> {
       echo key
       model
@@ -149,33 +182,16 @@ fn handle_key_press(model: Model, event: KeyEvent) -> Model {
   }
 }
 
-fn set_cell(sudoku: Sudoku, pos: p.Pos, value: cs.Cell) -> Sudoku {
-  let idx = pos |> p.index(sudoku_stride)
-
-  {
-    use cell <- result.try(case sudoku |> utils.get_index(idx) {
-      Ok(cs.Preset(_)) -> Error(Nil)
-      Error(_) -> Error(Nil)
-      Ok(v) -> Ok(v)
-    })
-
-    case cell == value {
-      True -> sudoku |> utils.set_index(idx, cs.Empty)
-      False -> sudoku |> utils.set_index(idx, value)
-    }
-  }
-  |> result.unwrap(sudoku)
-}
-
 fn set_cells(sudoku: Sudoku, positions: List(p.Pos), value: cs.Cell) -> Sudoku {
   case positions {
-    [pos, ..rest] -> sudoku |> set_cell(pos, value) |> set_cells(rest, value)
+    [pos, ..rest] ->
+      sudoku |> utils.set_cell(pos, value) |> set_cells(rest, value)
     [] -> sudoku
   }
 }
 
 fn view(model: Model) -> Element(Msg) {
-  let Model(sudoku, cursor, sel) = model
+  let Model(sudoku, cursor, sel, _) = model
   let cursor.Cursor(c_pos, _) = cursor
 
   let on_keypress = {

@@ -14,7 +14,8 @@ import lustre/element/html
 import lustre/event
 import sudoku/cell/mark
 import sudoku/cell/state.{
-  type Model, type Msg, ClickCell, Empty, Filled, Marking, Preset, UpdateValue,
+  type Model, type Msg, ClickCell, Empty, Filled, Marking, Preset, Solved,
+  UpdateValue,
 }
 import sudoku/pos
 
@@ -70,6 +71,8 @@ fn view(model: Model) -> Element(Msg) {
 
     Filled(val) -> #([html.text(val |> int.to_string)], attribute.none())
 
+    Solved(val) -> #([html.text(val |> int.to_string)], attribute.none())
+
     Marking(m) -> #([m |> mark.view], attribute.none())
   }
 
@@ -98,6 +101,7 @@ fn encode(model: Model) -> json.Json {
     Empty -> #("Empty", json.null())
     Preset(val) -> #("Preset", val |> json.int)
     Filled(val) -> #("Filled", val |> json.int)
+    Solved(val) -> #("Solved", val |> json.int)
     Marking(m) -> #("Mark", m |> mark.encode)
   }
 
@@ -129,6 +133,10 @@ fn decode() -> decode.Decoder(state.Model) {
       use m <- result.map(val |> decode.run(mark.decode()))
       state.Model(Marking(m), focus, selected)
     }
+    "Solved", Some(val) -> {
+      use m <- result.map(val |> decode.run(decode.int))
+      state.Model(Solved(m), focus, selected)
+    }
     _, _ -> Error(decode.decode_error("Kind", dynamic.nil()))
   }
   |> result.map(fn(cell) { decode.success(cell) })
@@ -157,6 +165,7 @@ pub fn value(cell: state.Cell) -> option.Option(Int) {
     Empty -> option.None
     Preset(val) -> option.Some(val)
     Filled(val) -> option.Some(val)
+    Solved(val) -> option.Some(val)
     Marking(_) -> option.None
   }
 }

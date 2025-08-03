@@ -1,8 +1,8 @@
 import gleam/dict
 import sudoku/cell/mod.{type Cell}
-import sudoku/state as s
+import sudoku/sudoku.{type Sudoku, Sudoku}
 
-pub fn to_dict(sudoku: s.Sudoku) -> dict.Dict(Int, Cell) {
-  let s.Sudoku(values, _) = sudoku
+pub fn to_dict(sudoku: Sudoku) -> dict.Dict(Int, Cell) {
+  let Sudoku(values, _) = sudoku
   values
 }

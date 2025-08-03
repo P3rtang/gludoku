@@ -1,10 +1,10 @@
 import gleam/list
 import gleam/result
 import sudoku/cell/mod as c
-import sudoku/generator/mod
 import sudoku/pos
-import sudoku/state.{type Sudoku, Sudoku}
-import sudoku/utils/utils
+import sudoku/sudoku.{type Sudoku, Sudoku}
+import sudoku/utils/index
+import sudoku/utils/positions
 
 pub fn get(sudoku: Sudoku, row_index: Int) -> Result(List(c.Cell), Nil) {
   let Sudoku(_, size) = sudoku
@@ -16,7 +16,7 @@ pub fn get(sudoku: Sudoku, row_index: Int) -> Result(List(c.Cell), Nil) {
   })
 
   use position <- list.try_map(
-    pos.Index(row_index * 9) |> mod.row_positions(stride),
+    pos.Index(row_index * 9) |> positions.row(stride),
   )
-  sudoku |> utils.get_index(position |> pos.index(stride))
+  sudoku |> index.get(position |> pos.index(stride))
 }

@@ -2,7 +2,7 @@ import gleam/list
 import gleam/option
 import gleam/result
 import sudoku/cell/cell
-import sudoku/state.{type Sudoku, Sudoku}
+import sudoku/sudoku.{type Sudoku, Sudoku}
 import sudoku/utils/get_row_values
 import sudoku/validator/error.{type Reason, InvalidBoxes}
 import sudoku/validator/validate_n

@@ -2,6 +2,7 @@ pub type Cell {
   Empty
   Preset(Int)
   Filled(Int)
+  Solved(Int)
   Marking(Mark)
 }
 

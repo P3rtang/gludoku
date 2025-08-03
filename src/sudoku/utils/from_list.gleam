@@ -1,9 +1,9 @@
 import gleam/dict
 import gleam/list
 import sudoku/cell/state as cs
-import sudoku/state as s
+import sudoku/sudoku.{type Sudoku, Sudoku}
 
-pub fn from_list(l: List(Int), size: #(Int, Int)) -> Result(s.Sudoku, Nil) {
+pub fn from_list(l: List(Int), size: #(Int, Int)) -> Result(Sudoku, Nil) {
   let #(col, row) = size
   case l |> list.length != col * col * row * row {
     True -> Error(Nil)
@@ -18,7 +18,7 @@ pub fn from_list(l: List(Int), size: #(Int, Int)) -> Result(s.Sudoku, Nil) {
         }
       })
       |> dict.from_list
-      |> s.Sudoku(size)
+      |> Sudoku(size)
       |> Ok
     }
   }

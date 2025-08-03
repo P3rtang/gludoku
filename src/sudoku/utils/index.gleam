@@ -1,6 +1,6 @@
 import gleam/dict
 import sudoku/cell/mod.{type Cell}
-import sudoku/state.{type Sudoku, Sudoku}
+import sudoku/sudoku.{type Sudoku, Sudoku}
 
 pub fn get(s: Sudoku, idx: Int) -> Result(Cell, Nil) {
   let Sudoku(values, _) = s
