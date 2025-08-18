@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/dynamic
 import gleam/dynamic/decode
 import gleam/int
@@ -17,6 +18,7 @@ import sudoku/cell/state.{
   type Model, type Msg, ClickCell, Empty, Filled, Marking, Preset, Solved,
   UpdateValue,
 }
+import sudoku/input_mode/input_mode
 import sudoku/pos
 
 pub fn register() -> Result(Nil, lustre.Error) {
@@ -34,7 +36,7 @@ pub fn register() -> Result(Nil, lustre.Error) {
 }
 
 fn init(_) -> #(Model, effect.Effect(Msg)) {
-  #(state.Model(Empty, False, False), effect.none())
+  #(state.Model(Empty, False, False, input_mode.Normal), effect.none())
 }
 
 pub fn element(
@@ -59,7 +61,7 @@ fn update(model: Model, msg: Msg) -> #(Model, effect.Effect(Msg)) {
 }
 
 fn view(model: Model) -> Element(Msg) {
-  let state.Model(cell, focus, selected) = model
+  let state.Model(cell, focus, selected, mode) = model
 
   let #(elements, bg) = case cell {
     Empty -> #([], attribute.none())
@@ -73,19 +75,25 @@ fn view(model: Model) -> Element(Msg) {
 
     Solved(val) -> #([html.text(val |> int.to_string)], attribute.none())
 
-    Marking(m) -> #([m |> mark.view], attribute.none())
+    Marking(m) -> #([mark.view(m)], attribute.none())
   }
 
   html.div(
     [
       attribute.class("h-16 w-16 flex items-center justify-center text-4xl"),
       bg,
-      case selected {
-        True -> attribute.style("background", "oklch(91.7% 0.08 205.041)")
-        False -> attribute.none()
-      },
+      selected
+        |> bool.guard(
+          attribute.style("background", "oklch(95.6% 0.045 203.388)"),
+          attribute.none,
+        ),
       case focus {
-        True -> attribute.style("background", "oklch(90.1% 0.076 70.697)")
+        True ->
+          attribute.style("background", case mode {
+            input_mode.Normal -> "oklch(90.1% 0.076 70.697)"
+            input_mode.Insert -> "oklch(92.5% 0.084 155.995)"
+            input_mode.Visual -> "oklch(91.7% 0.08 205.041)"
+          })
         False -> attribute.none()
       },
       event.on_click(ClickCell),
@@ -95,7 +103,7 @@ fn view(model: Model) -> Element(Msg) {
 }
 
 fn encode(model: Model) -> json.Json {
-  let state.Model(cell, focus, selected) = model
+  let state.Model(cell, focus, selected, mode) = model
 
   let #(kind, value) = case cell {
     Empty -> #("Empty", json.null())
@@ -110,6 +118,7 @@ fn encode(model: Model) -> json.Json {
     #("value", value),
     #("focus", focus |> json.bool),
     #("selected", selected |> json.bool),
+    #("mode", mode |> input_mode.encode |> json.string),
   ])
 }
 
@@ -118,29 +127,35 @@ fn decode() -> decode.Decoder(state.Model) {
   use value <- decode.field("value", decode.optional(decode.dynamic))
   use focus <- decode.field("focus", decode.bool)
   use selected <- decode.field("selected", decode.bool)
+  use mode <- decode.field("mode", input_mode.decode())
+
+  let default = state.Model(Empty, focus, selected, mode)
 
   case kind, value {
-    "Empty", _ -> Ok(state.Model(Empty, focus, selected))
+    "Empty", _ -> Ok(state.Model(..default, cell: Empty))
     "Preset", Some(val) -> {
       use val <- result.map(val |> decode.run(decode.int))
-      state.Model(Preset(val), focus, selected)
+      state.Model(..default, cell: Preset(val))
     }
     "Filled", Some(val) -> {
       use val <- result.map(val |> decode.run(decode.int))
-      state.Model(Filled(val), focus, selected)
+      state.Model(..default, cell: Filled(val))
     }
     "Mark", Some(val) -> {
       use m <- result.map(val |> decode.run(mark.decode()))
-      state.Model(Marking(m), focus, selected)
+      state.Model(..default, cell: Marking(m))
     }
     "Solved", Some(val) -> {
       use m <- result.map(val |> decode.run(decode.int))
-      state.Model(Solved(m), focus, selected)
+      state.Model(..default, cell: Solved(m))
     }
     _, _ -> Error(decode.decode_error("Kind", dynamic.nil()))
   }
   |> result.map(fn(cell) { decode.success(cell) })
-  |> result.unwrap(decode.failure(state.Model(Empty, False, False), "Cell"))
+  |> result.unwrap(decode.failure(
+    state.Model(Empty, False, False, input_mode.Normal),
+    "Cell",
+  ))
 }
 
 pub fn border(p: pos.Pos) -> List(attribute.Attribute(void)) {

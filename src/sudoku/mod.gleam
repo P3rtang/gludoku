@@ -1,5 +1,4 @@
 import gleam/dynamic/decode
-import gleam/int
 import gleam/list
 import gleam/result
 import gleam/set
@@ -12,11 +11,13 @@ import sudoku/cell/cell
 import sudoku/cell/mark
 import sudoku/cell/state as cs
 import sudoku/cursor/mod as cursor
-import sudoku/generator/mod
 import sudoku/history/history
+import sudoku/input_mode/input_mode.{
+  type KeyEvent, Insert, KeyEvent, Normal, Visual,
+}
 import sudoku/pos as p
 import sudoku/selection
-import sudoku/state.{type KeyEvent, type Model, type Msg, Model}
+import sudoku/state.{type Model, type Msg, Model}
 import sudoku/sudoku.{new}
 import sudoku/utils/utils
 import sudoku/validator/validator
@@ -27,10 +28,10 @@ pub type Sudoku =
 const sudoku_stride = 9
 
 const sudoku_list = [
-  0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 4, 7, 0, 0, 9, 4, 0, 0, 0, 7, 0, 0,
-  6, 0, 0, 0, 0, 0, 0, 0, 7, 0, 8, 0, 0, 0, 0, 0, 0, 0, 5, 0, 6, 0, 1, 0, 3, 4,
-  0, 0, 0, 0, 3, 0, 6, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 7, 0, 0,
-  5, 8, 2,
+  0, 0, 0, 8, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 1, 0, 0, 0, 8, 0, 0, 9, 0, 0, 0, 3,
+  5, 0, 0, 0, 0, 0, 0, 0, 4, 6, 0, 5, 3, 0, 0, 0, 7, 0, 0, 9, 0, 0, 0, 6, 0, 5,
+  0, 0, 0, 9, 0, 0, 3, 7, 2, 0, 0, 0, 4, 0, 0, 1, 0, 0, 0, 0, 0, 6, 7, 0, 0, 5,
+  0, 0, 0,
 ]
 
 pub fn register() -> Result(Nil, lustre.Error) {
@@ -43,7 +44,13 @@ fn init(_) -> Model {
   sudoku_list
   |> utils.from_list(#(3, 3))
   |> result.unwrap(new())
-  |> Model(p.Pos(#(4, 4)) |> cursor.Cursor(#(9, 9)), selection.new(), [])
+  |> Model(
+    p.Pos(#(4, 4)) |> cursor.Cursor(#(9, 9)),
+    selection.new(),
+    [],
+    input_mode.new(),
+  )
+  |> setup_inputs
 }
 
 pub fn element() -> Element(void) {
@@ -56,130 +63,135 @@ fn update(model: Model, msg: Msg) -> Model {
   }
 }
 
-fn handle_key_press(model: Model, event: KeyEvent) -> Model {
-  let Model(sudoku, cursor, sel, hist) = model
-  let cursor.Cursor(c_pos, _) = cursor
+fn setup_inputs(model: Model) -> Model {
+  let input = model.input
 
-  let selected =
-    sel
-    |> set.insert(c_pos |> p.index(sudoku_stride))
-    |> set.to_list
-    |> list.map(p.Index)
+  let input = {
+    use model <- input_mode.bind_char(input, [Normal, Visual], "j")
+    let Model(cursor: cursor, ..) = model
+    Model(..model, cursor: cursor.down(cursor))
+  }
 
-  let state.KeyEvent(key, _code, shift, ctrl) = event
+  let input = {
+    use model <- input_mode.bind_char(input, [Normal, Visual], "k")
+    let Model(cursor: cursor, ..) = model
+    Model(..model, cursor: cursor.up(cursor))
+  }
 
-  let num = key |> int.parse
+  let input = {
+    use model <- input_mode.bind_char(input, [Normal, Visual], "h")
+    let Model(cursor: cursor, ..) = model
+    Model(..model, cursor: cursor.left(cursor))
+  }
 
-  case key, num {
-    "j", _ -> {
-      Model(sudoku, cursor |> cursor.down, sel, hist)
-    }
-    "k", _ -> {
-      Model(sudoku, cursor |> cursor.up, sel, hist)
-    }
-    "h", _ -> {
-      Model(sudoku, cursor |> cursor.left, sel, hist)
-    }
-    "l", _ -> {
-      Model(sudoku, cursor |> cursor.right, sel, hist)
-    }
-    " ", _ -> {
-      Model(sudoku, cursor, sel |> selection.toggle(c_pos), hist)
-    }
-    _, Ok(val) -> {
-      case shift, ctrl {
-        False, False -> {
-          let hist = hist |> history.replace(sudoku, c_pos, cs.Filled(val))
+  let input = {
+    use model <- input_mode.bind_char(input, [Normal, Visual], "l")
+    let Model(cursor: cursor, ..) = model
+    Model(..model, cursor: cursor.right(cursor))
+  }
 
-          Model(
-            sudoku |> set_cells(selected, cs.Filled(val)),
-            cursor,
-            sel,
-            hist,
+  let input = {
+    use model <- input_mode.bind_char(input, [Normal], "u")
+    let Model(sudoku: sudoku, history: hist, ..) = model
+    let #(sudoku, hist) =
+      hist
+      |> history.undo(sudoku)
+      |> result.unwrap(#(sudoku, hist))
+
+    Model(..model, sudoku: sudoku, history: hist)
+  }
+
+  let input = {
+    use model, _ <- input_mode.bind_mode_change(input)
+    Model(..model, selection: selection.new())
+  }
+
+  let input = {
+    use model, mode <- input_mode.bind_mode_change(input)
+    case mode {
+      input_mode.Visual -> {
+        let Model(selection: sel, cursor: cursor.Cursor(c_pos, _), ..) = model
+        Model(..model, selection: sel |> selection.toggle(c_pos))
+      }
+      _ -> model
+    }
+  }
+
+  let input = {
+    use model <- input_mode.bind_char(input, [Visual], "v")
+    let Model(selection: sel, cursor: cursor.Cursor(c_pos, _), ..) = model
+    Model(..model, selection: sel |> selection.toggle(c_pos))
+  }
+
+  let input = {
+    use model, event <- input_mode.bind_mode(input, Insert)
+    let Model(sudoku, cursor, sel, hist, ..) = model
+    let cursor.Cursor(c_pos, _) = cursor
+
+    let selected =
+      sel
+      |> set.insert(c_pos |> p.index(sudoku_stride))
+      |> set.to_list
+      |> list.map(p.Index)
+
+    case event {
+      KeyEvent(input_mode.Digit(num), False, False) -> {
+        let hist = hist |> history.replace(sudoku, c_pos, cs.Filled(num))
+
+        Model(
+          ..model,
+          history: hist,
+          sudoku: sudoku |> set_cells(selected, cs.Filled(num)),
+        )
+      }
+      KeyEvent(input_mode.Digit(num), _, ctrl) -> {
+        let func = case ctrl {
+          False -> mark.toggle_corner_int
+          True -> mark.toggle_center_int
+        }
+
+        let #(sudoku, history) = case
+          sudoku |> utils.get_index(c_pos |> p.index(9))
+        {
+          Ok(cs.Marking(cs.Mark(corner, center))) -> #(
+            sudoku
+              |> set_cells(
+                selected,
+                cs.Marking(cs.Mark(corner, center) |> func(num)),
+              ),
+            hist
+              |> history.replace(
+                sudoku,
+                c_pos,
+                cs.Marking(cs.Mark(corner, center)),
+              ),
+          )
+          _ -> #(
+            sudoku
+              |> set_cells(selected, cs.Marking(cs.Mark(0, 0) |> func(num))),
+            hist
+              |> history.replace(sudoku, c_pos, cs.Marking(cs.Mark(0, 0))),
           )
         }
-        True, _ -> {
-          case sudoku |> utils.get_index(c_pos |> p.index(9)) {
-            Ok(cs.Marking(cs.Corner(c))) ->
-              Model(
-                sudoku
-                  |> set_cells(
-                    selected,
-                    cs.Marking(cs.Corner(c) |> mark.toggle_int(val)),
-                  ),
-                cursor,
-                sel,
-                hist,
-              )
-            _ ->
-              Model(
-                sudoku
-                  |> set_cells(
-                    selected,
-                    cs.Marking(cs.Corner(0) |> mark.toggle_int(val)),
-                  ),
-                cursor,
-                sel,
-                hist,
-              )
-          }
-        }
-        False, True -> {
-          case sudoku |> utils.get_index(c_pos |> p.index(9)) {
-            Ok(cs.Marking(cs.Center(c))) -> {
-              let hist =
-                hist |> history.replace(sudoku, c_pos, cs.Marking(cs.Center(c)))
 
-              Model(
-                sudoku
-                  |> set_cells(
-                    selected,
-                    cs.Marking(cs.Center(c) |> mark.toggle_int(val)),
-                  ),
-                cursor,
-                sel,
-                hist,
-              )
-            }
-            _ -> {
-              let hist =
-                hist |> history.replace(sudoku, c_pos, cs.Marking(cs.Center(0)))
-
-              Model(
-                sudoku
-                  |> set_cells(
-                    selected,
-                    cs.Marking(cs.Center(0) |> mark.toggle_int(val)),
-                  ),
-                cursor,
-                sel,
-                hist,
-              )
-            }
-          }
-        }
+        Model(..model, sudoku:, history:)
+      }
+      _ -> {
+        model
       }
     }
-    "z", _ -> {
-      case ctrl {
-        True -> {
-          let #(sudoku, hist) =
-            hist
-            |> history.undo(sudoku)
-            |> result.unwrap(#(sudoku, hist))
-
-          Model(sudoku, cursor, sel, hist)
-        }
-        False -> model
-      }
-    }
-    "Escape", _ -> Model(sudoku, cursor, selection.new(), hist)
-    key, _ -> {
-      echo key
-      model
-    }
-    // _, _ -> model
   }
+
+  Model(..model, input:)
+}
+
+fn handle_key_press(model: Model, event: KeyEvent) -> Model {
+  let #(input, func) = {
+    model.input |> input_mode.handle_input(event)
+  }
+
+  let model = func(model)
+  Model(..model, input:)
 }
 
 fn set_cells(sudoku: Sudoku, positions: List(p.Pos), value: cs.Cell) -> Sudoku {
@@ -191,17 +203,20 @@ fn set_cells(sudoku: Sudoku, positions: List(p.Pos), value: cs.Cell) -> Sudoku {
 }
 
 fn view(model: Model) -> Element(Msg) {
-  let Model(sudoku, cursor, sel, _) = model
+  let Model(sudoku:, cursor:, selection: sel, ..) = model
   let cursor.Cursor(c_pos, _) = cursor
 
   let on_keypress = {
     event.on("keydown", {
-      use key <- decode.field("key", decode.string)
       use code <- decode.field("code", decode.string)
       use shift <- decode.field("shiftKey", decode.bool)
       use ctrl <- decode.field("ctrlKey", decode.bool)
       decode.success(
-        state.UserPressedKey(state.KeyEvent(key, code, shift, ctrl)),
+        state.UserPressedKey(input_mode.KeyEvent(
+          code |> input_mode.parse,
+          shift,
+          ctrl,
+        )),
       )
     })
   }
@@ -219,6 +234,7 @@ fn view(model: Model) -> Element(Msg) {
           cell,
           p.Pos(#(col, row)) == c_pos,
           sel |> set.contains(p.Pos(#(col, row)) |> p.index(sudoku_stride)),
+          model.input.mode,
         ),
         [attribute.value("focus")]
           |> list.append(p.Pos(#(col, row)) |> cell.border),

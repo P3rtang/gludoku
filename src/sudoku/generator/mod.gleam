@@ -35,19 +35,17 @@ pub fn add_pattern(
 }
 
 pub fn retry_pattern(seed: Int, offset: Int) -> Result(Sudoku, Nil) {
-  let sudoku =
-    {
-      let pattern = pattern(seed, offset)
+  let sudoku = {
+    let pattern = pattern(seed, offset)
 
-      use zero_sudoku <- result.try(
-        list.repeat(0, 81) |> utils.from_list(#(3, 3)),
-      )
-      use sudoku <- result.map(
-        zero_sudoku |> solve_with_seed(seed, 0, p.Index(0)),
-      )
-      sudoku |> apply_pattern(pattern)
-    }
-    |> echo
+    use zero_sudoku <- result.try(
+      list.repeat(0, 81) |> utils.from_list(#(3, 3)),
+    )
+    use sudoku <- result.map(
+      zero_sudoku |> solve_with_seed(seed, 0, p.Index(0)),
+    )
+    sudoku |> apply_pattern(pattern)
+  }
 
   // let solve_count =
   //   {
@@ -58,7 +56,7 @@ pub fn retry_pattern(seed: Int, offset: Int) -> Result(Sudoku, Nil) {
   //   |> result.unwrap(0)
   //   |> echo
 
-  sudoku |> echo
+  sudoku
   // case sudoku {
   //   Ok(s) if solve_count == 1 -> Ok(s)
   //   _ -> retry_pattern(seed, offset + 1)

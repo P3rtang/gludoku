@@ -1,5 +1,5 @@
 import gleam/dict
-import sudoku/cell/state.{type Cell, Empty, Marking, Preset}
+import sudoku/cell/state.{type Cell, Empty, Mark, Marking}
 
 pub type Sudoku {
   Sudoku(values: dict.Dict(Int, Cell), size: #(Int, Int))
@@ -8,8 +8,8 @@ pub type Sudoku {
 pub fn new() -> Sudoku {
   Sudoku(
     dict.from_list([
-      #(0, Empty),
-      #(1, Empty),
+      #(0, Marking(Mark(1, 6))),
+      #(1, Marking(Mark(1, 6))),
       #(2, Empty),
       #(3, Empty),
       #(4, Empty),

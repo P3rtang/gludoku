@@ -1,3 +1,5 @@
+import sudoku/input_mode/input_mode
+
 pub type Cell {
   Empty
   Preset(Int)
@@ -7,7 +9,7 @@ pub type Cell {
 }
 
 pub type Model {
-  Model(cell: Cell, focus: Bool, selected: Bool)
+  Model(cell: Cell, focus: Bool, selected: Bool, mode: input_mode.Mode)
 }
 
 pub type Msg {
@@ -16,6 +18,5 @@ pub type Msg {
 }
 
 pub type Mark {
-  Corner(value: Int)
-  Center(value: Int)
+  Mark(corner: Int, center: Int)
 }

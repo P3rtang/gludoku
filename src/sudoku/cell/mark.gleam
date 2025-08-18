@@ -2,51 +2,62 @@ import gleam/dynamic/decode
 import gleam/int
 import gleam/json
 import gleam/list
+import gleam/result
 import lustre/attribute
 import lustre/element
 import lustre/element/html
-import sudoku/cell/state.{type Mark, Center, Corner}
+import sudoku/cell/state.{type Mark, Mark}
 
 pub fn view(mark: Mark) -> element.Element(state.Msg) {
-  let values = mark |> get_values
-
-  let elements = {
-    use num <- list.map(values)
+  let corner_elements = {
+    use num <- list.map(mark |> get_corner_values)
     html.div(
       [attribute.style("line-height", "1rem"), attribute.class("w-[6px]")],
       [html.text(num |> int.to_string)],
     )
   }
 
-  html.div(
-    [
-      attribute.class(
-        "flex flex-row gap-[3px] self-start justify-self-start w-full p-1 flex-wrap h-[8px]",
-      ),
-      attribute.style("font-size", "12px"),
-    ],
-    elements,
-  )
+  let center_elements = {
+    use num <- list.map(mark |> get_center_values)
+    html.div(
+      [attribute.style("line-height", "8px"), attribute.class("w-[6px]")],
+      [html.text(num |> int.to_string)],
+    )
+  }
+
+  html.div([attribute.class("w-full h-full flex relative")], [
+    html.div(
+      [
+        attribute.class(
+          "flex flex-row gap-[3px] self-start justify-self-start w-full p-1 flex-wrap h-[8px] absolute",
+        ),
+        attribute.style("font-size", "12px"),
+      ],
+      corner_elements,
+    ),
+    html.div(
+      [
+        attribute.class(
+          "flex flex-row gap-[3px] self-center justify-self-center w-full p-1 flex-wrap font-semibold absolute justify-center items-center",
+        ),
+        attribute.style("font-size", "12px"),
+      ],
+      center_elements,
+    ),
+  ])
 }
 
 pub fn encode(mark: Mark) -> json.Json {
-  let #(kind, value) = case mark {
-    Corner(val) -> #("Corner", val)
-    Center(val) -> #("Center", val)
-  }
+  let Mark(corner, center) = mark
 
-  json.object([#("kind", kind |> json.string), #("value", value |> json.int)])
+  json.object([#("corner", json.int(corner)), #("center", json.int(center))])
 }
 
 pub fn decode() -> decode.Decoder(Mark) {
-  use kind <- decode.field("kind", decode.string)
-  use value <- decode.field("value", decode.int)
+  use corner <- decode.field("corner", decode.int)
+  use center <- decode.field("center", decode.int)
 
-  case kind {
-    "Corner" -> decode.success(Corner(value))
-    "Center" -> decode.success(Center(value))
-    _ -> decode.failure(Corner(0), "Kind")
-  }
+  decode.success(Mark(corner, center))
 }
 
 // fn then_some(b: Bool, v: val) -> option.Option(val) {
@@ -56,44 +67,63 @@ pub fn decode() -> decode.Decoder(Mark) {
 //   }
 // }
 
-fn then_ok(b: Bool, v: val, err: error) -> Result(val, error) {
+pub fn then_ok(b: Bool, v: val, err: error) -> Result(val, error) {
   case b {
     True -> Ok(v)
     False -> Error(err)
   }
 }
 
-fn get_values(mark: Mark) -> List(Int) {
-  let value = case mark {
-    Corner(val) -> val
-    Center(val) -> val
-  }
+pub fn get_corner_values(mark: Mark) -> List(Int) {
+  let Mark(corner, _) = mark
 
   [
-    { value |> int.bitwise_and(1) > 0 } |> then_ok(1, Nil),
-    { value |> int.bitwise_and(2) > 0 } |> then_ok(2, Nil),
-    { value |> int.bitwise_and(4) > 0 } |> then_ok(3, Nil),
-    { value |> int.bitwise_and(8) > 0 } |> then_ok(4, Nil),
-    { value |> int.bitwise_and(16) > 0 } |> then_ok(5, Nil),
-    { value |> int.bitwise_and(32) > 0 } |> then_ok(6, Nil),
-    { value |> int.bitwise_and(64) > 0 } |> then_ok(7, Nil),
-    { value |> int.bitwise_and(128) > 0 } |> then_ok(8, Nil),
-    { value |> int.bitwise_and(256) > 0 } |> then_ok(9, Nil),
+    { corner |> int.bitwise_and(1) > 0 } |> then_ok(1, Nil),
+    { corner |> int.bitwise_and(2) > 0 } |> then_ok(2, Nil),
+    { corner |> int.bitwise_and(4) > 0 } |> then_ok(3, Nil),
+    { corner |> int.bitwise_and(8) > 0 } |> then_ok(4, Nil),
+    { corner |> int.bitwise_and(16) > 0 } |> then_ok(5, Nil),
+    { corner |> int.bitwise_and(32) > 0 } |> then_ok(6, Nil),
+    { corner |> int.bitwise_and(64) > 0 } |> then_ok(7, Nil),
+    { corner |> int.bitwise_and(128) > 0 } |> then_ok(8, Nil),
+    { corner |> int.bitwise_and(256) > 0 } |> then_ok(9, Nil),
   ]
-  |> list.filter_map(fn(a) { a })
+  |> result.values
 }
 
-pub fn toggle_int(mark: Mark, int: Int) -> Mark {
-  case mark {
-    Corner(val) ->
-      1
+pub fn get_center_values(mark: Mark) -> List(Int) {
+  let Mark(_, center) = mark
+
+  [
+    { center |> int.bitwise_and(1) > 0 } |> then_ok(1, Nil),
+    { center |> int.bitwise_and(2) > 0 } |> then_ok(2, Nil),
+    { center |> int.bitwise_and(4) > 0 } |> then_ok(3, Nil),
+    { center |> int.bitwise_and(8) > 0 } |> then_ok(4, Nil),
+    { center |> int.bitwise_and(16) > 0 } |> then_ok(5, Nil),
+    { center |> int.bitwise_and(32) > 0 } |> then_ok(6, Nil),
+    { center |> int.bitwise_and(64) > 0 } |> then_ok(7, Nil),
+    { center |> int.bitwise_and(128) > 0 } |> then_ok(8, Nil),
+    { center |> int.bitwise_and(256) > 0 } |> then_ok(9, Nil),
+  ]
+  |> result.values
+}
+
+pub fn toggle_corner_int(mark: Mark, int: Int) -> Mark {
+  let Mark(corner, center) = mark
+  Mark(
+    1
       |> int.bitwise_shift_left(int - 1)
-      |> int.bitwise_exclusive_or(val)
-      |> Corner
-    Center(val) ->
-      1
+      |> int.bitwise_exclusive_or(corner),
+    center,
+  )
+}
+
+pub fn toggle_center_int(mark: Mark, int: Int) -> Mark {
+  let Mark(corner, center) = mark
+  Mark(
+    corner,
+    1
       |> int.bitwise_shift_left(int - 1)
-      |> int.bitwise_exclusive_or(val)
-      |> Center
-  }
+      |> int.bitwise_exclusive_or(center),
+  )
 }
